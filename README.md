@@ -16,11 +16,11 @@ English | [简体中文](./README-zh_CN.md)
 ## 📦 Install
 
 ```bash
-npm install electron-forge-publisher-oss --save
+npm install @mtdxc/electron-forge-publisher-oss --save-dev
 ```
 
 ```bash
-yarn add electron-forge-publisher-oss
+yarn add @mtdxc/electron-forge-publisher-oss --dev
 ```
 
 ## 🔨 Usage
@@ -34,7 +34,7 @@ module.exports = {
   // ...
   publishers: [
     {
-      name: 'electron-forge-publisher-oss',
+      name: '@mtdxc/electron-forge-publisher-oss',
       config: {
         basePath: '/desktop',
         region: 'oss-cn-hangzhou',
