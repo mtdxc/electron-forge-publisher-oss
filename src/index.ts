@@ -1,15 +1,15 @@
 import path from 'path'
 import OSS from 'ali-oss'
-import PublisherBase, { PublisherOptions } from '@electron-forge/publisher-base'
-import { asyncOra } from '@electron-forge/async-ora'
+import {PublisherOptions, PublisherStatic} from '@electron-forge/publisher-static';
 
 import { PublisherOssConfig } from './config'
 
 type OssArtifact = {
   path: string
-  version: string
   platform: string
   arch: string
+  keyPrefix: string
+  version: string
 }
 
 type ReleaseJSON = {
@@ -28,10 +28,13 @@ type Releases = {
   }
 }
 
-export default class PublisherOss extends PublisherBase<PublisherOssConfig> {
+export default class PublisherOss extends PublisherStatic<PublisherOssConfig> {
   name = 'oss'
+  private filterKeySafe = (key: string) => {
+    return key.replace(/@/g, '_').replace(/\//g, '_');
+  };
 
-  async publish({ makeResults }: PublisherOptions) {
+  async publish({makeResults, setStatusLine}: PublisherOptions): Promise<void> {
     const { config } = this
     const ossClient = new OSS(config)
     const artifacts: OssArtifact[] = []
@@ -40,6 +43,7 @@ export default class PublisherOss extends PublisherBase<PublisherOssConfig> {
       artifacts.push(
         ...makeResult.artifacts.map((artifact) => ({
           path: artifact,
+          keyPrefix: this.config.basePath || this.filterKeySafe(makeResult.packageJSON.name),
           version: makeResult.packageJSON.version,
           platform: makeResult.platform,
           arch: makeResult.arch,
@@ -50,39 +54,33 @@ export default class PublisherOss extends PublisherBase<PublisherOssConfig> {
     let uploaded = 0
     let releaseArtifact: any
     const details: string[] = []
-    const spinnerText = () => `Uploading Artifacts ${uploaded}/${artifacts.length}\n  ${details.join('\t')}`
-    await asyncOra(spinnerText(), async (uploadSpinner) => {
-      await Promise.all(artifacts.map(async (artifact, i) => {
-        const name = this.generateName(artifact)
-        const artifactPath = artifact.path
-        const basename = path.basename(artifactPath)
-        const extname = path.extname(artifactPath)
+    const updateStatusLine = () => setStatusLine(`Uploading Artifacts ${uploaded}/${artifacts.length}\n  ${details.join('\t')}`);
 
-        await ossClient.multipartUpload(name, artifactPath, {
-          progress: (p) => {
-            details[i] = `<${basename}>: ${Math.round(p * 100)}%`
+    updateStatusLine();
+    await Promise.all(artifacts.map(async (artifact, i) => {
+      const artifactPath = artifact.path
+      const basename = path.basename(artifactPath)
+      const extname = path.extname(artifactPath)
 
-            uploadSpinner.text = spinnerText()
-          }
-        })
-        uploaded += 1
-        details[i] = `<${basename}>: 100%`
-        uploadSpinner.text = spinnerText()
-        if (extname && ['.dmg', '.exe'].includes(extname)) {
-          releaseArtifact = artifact
+      await ossClient.multipartUpload(this.keyForArtifact(artifact), artifactPath, {
+        progress: (p: number) => {
+          details[i] = `<${basename}>: ${Math.round(p * 100)}%`
+          updateStatusLine();
         }
-      }))
-    })
+      })
+      uploaded += 1
+      details[i] = `<${basename}>: 100%`
+      updateStatusLine();
+      if (extname && ['.dmg', '.exe'].includes(extname)) {
+        releaseArtifact = artifact
+      }
+    }))
+
     if (releaseArtifact) {
       this.setRelease(ossClient, releaseArtifact)
     }
   }
 
-  generateName(artifact: OssArtifact) {
-    const { config: { basePath = '' } } = this
-    const { platform, version, path: artifactPath } = artifact
-    return `${basePath}/${platform}/${version}/${path.basename(artifactPath)}`
-  }
 
   async setRelease(ossClient: OSS, artifact: OssArtifact) {
     const { config: { basePath = '' } } = this
@@ -119,3 +117,5 @@ export default class PublisherOss extends PublisherBase<PublisherOssConfig> {
     }
   }
 }
+
+export {PublisherOss};
