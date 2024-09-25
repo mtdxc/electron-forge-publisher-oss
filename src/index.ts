@@ -84,11 +84,11 @@ export default class PublisherOss extends PublisherStatic<PublisherOssConfig> {
 
   async setRelease(ossClient: OSS, artifact: OssArtifact) {
     const { config: { basePath = '' } } = this
-    const { platform, version, path: artifactPath } = artifact
-
+    const { platform, version, arch, path: artifactPath } = artifact
+    let jsonUrl = `${basePath}/${platform}/${arch}/RELEASES.json`
     let releaseJson: ReleaseJSON
     try {
-      let result = await ossClient.get(`${basePath}/${platform}/release.json`)
+      let result = await ossClient.get(jsonUrl)
       releaseJson = JSON.parse(`${result.content}`)
     } catch (e) {
       releaseJson = {
@@ -97,21 +97,33 @@ export default class PublisherOss extends PublisherStatic<PublisherOssConfig> {
       }
     }
 
-    const url = ossClient.generateObjectUrl(`${basePath}/${platform}/${version}/${encodeURIComponent(path.basename(artifactPath))}`)
+    const url = ossClient.generateObjectUrl(this.keyForArtifact(artifact))
 
     releaseJson.currentRelease = version
-    releaseJson.releases.push({
-      version,
-      updateTo: {
+    let ver = releaseJson.releases.find((val)=>val.version == version);
+    if (ver) {
+      ver.updateTo = {
         version,
         pub_date: new Date(),
         notes: `version：${version}`,
         name: version,
         url
       }
-    })
+    }
+    else{
+      releaseJson.releases.push({
+        version,
+        updateTo: {
+          version,
+          pub_date: new Date(),
+          notes: `version：${version}`,
+          name: version,
+          url
+        }
+      })  
+    }
 
-    const result = await ossClient.put(`${basePath}/${platform}/release.json`, Buffer.from(JSON.stringify(releaseJson)))
+    const result = await ossClient.put(jsonUrl, Buffer.from(JSON.stringify(releaseJson)))
     if (result?.name) {
       console.log('  <release.json> uploaded successfully!')
     }
